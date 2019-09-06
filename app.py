@@ -3,6 +3,7 @@ import os
 from flask import Flask, request, url_for, send_from_directory
 from werkzeug import secure_filename
 from pypinyin import lazy_pinyin
+import prediction.nsfw_predict as nsfw
 
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
@@ -41,6 +42,8 @@ def upload_file():
             filename = secure_filename(''.join(lazy_pinyin(file.filename)))
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             file_url = url_for('uploaded_file', filename=filename)
+            result = nsfw.predict(os.path.join(app.config['UPLOAD_FOLDER'], filename),os.getcwd()+'/models/1547856517')
+            print(result)
             return html + '<br><img src=' + file_url + '>'
     return html
 
