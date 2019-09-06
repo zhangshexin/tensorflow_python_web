@@ -44,7 +44,7 @@ def upload_file():
             file_url = url_for('uploaded_file', filename=filename)
             result = nsfw.predict(os.path.join(app.config['UPLOAD_FOLDER'], filename),os.getcwd()+'/models/1547856517')
             print(result)
-            return html + '<br><img src=' + file_url + '>'
+            return html + '<br><img src=' + file_url + '><p>预测结果如下：' + str(result) + '</p>'
     return html
 
 
