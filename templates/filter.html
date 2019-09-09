@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>敏感词过滤</title>
+</head>
+<body>
+<form action="{{ url_for('txtFilter') }}" method="post">
+        <table>
+            <tbody>
+                <tr>
+                    <td>哈罗罗，写点吧: </td>
+                    <td><textarea type="text"  name = 'txt'></textarea></td>
+                </tr>
+                <tr>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td><input type="submit" value="走你"></td>
+                </tr>
+            </tbody>
+        </table>
+    </form>
+</body>
+</html>

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
-from flask import Flask, request, url_for, send_from_directory
+from flask import Flask, request, url_for, send_from_directory, render_template
 from werkzeug import secure_filename
 from pypinyin import lazy_pinyin
 import prediction.nsfw_predict as nsfw
+import prediction.filter as filter
 
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
@@ -46,6 +47,18 @@ def upload_file():
             print(result)
             return html + '<br><img src=' + file_url + '><p>预测结果如下：' + str(result) + '</p>'
     return html
+
+
+@app.route('/filter/', methods=['POST', 'GET'])
+def txtFilter():
+    if request.method == 'GET':
+        return render_template('filter.html')
+    else:
+        txt = request.form.get('txt')
+        gfw = filter.DFAFilter()
+        gfw.parse(os.getcwd() + "/filter/keywords")
+        txted=gfw.filter(txt, "*")
+        return 'txt={}'.format(txted)
 
 
 if __name__ == '__main__':
