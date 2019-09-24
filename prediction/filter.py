@@ -9,7 +9,9 @@ __all__ = ['NaiveFilter', 'BSFilter', 'DFAFilter']
 __author__ = 'observer'
 __date__ = '2012.01.05'
 
-
+'''
+敏感词过滤
+'''
 class NaiveFilter():
 
     '''Filter Messages from keywords
