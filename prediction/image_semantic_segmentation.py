@@ -7,12 +7,11 @@ from skimage import  transform
 from PIL import Image
 from keras.preprocessing.image import load_img, img_to_array
 import cv2
-
+'''
+加载pb模型实现语义分割,图片大小要在513内
+'''
 
 model_dir=os.getcwd()+'/models/maskmode'
-imgRes=cv2.imread(os.getcwd()+'/imgs/mini_zjz.png')
-rows, cols, _ = imgRes.shape
-print(imgRes.shape)
 _IMAGE_SIZE = 64
 def standardize(img):
     mean = np.mean(img)
@@ -46,6 +45,11 @@ def run_inference_on_image(image):
   Returns:
     Nothing
   """
+  imgRes = cv2.imread(image_path)
+  rows, cols,_ = imgRes.shape
+  print(imgRes.shape)
+
+
   if not tf.gfile.Exists(image):
     tf.logging.fatal('File does not exist %s', image)
   image_data = tf.gfile.FastGFile(image, 'rb').read()
@@ -69,6 +73,7 @@ def run_inference_on_image(image):
     img = load_img(image_path)  # 输入预测图片的url
     img = img_to_array(img)
     image_data = np.expand_dims(img, axis=0).astype(np.uint8)  # uint8是之前导出模型时定义的
+    print(image_data.shape)
     # print(image_data)
     result = sess.run(probabilities_op,
                                           feed_dict={inputs: image_data})
@@ -80,29 +85,13 @@ def run_inference_on_image(image):
     # 遍历替换
     for i in range(rows):
         for j in range(cols):
-            print("[{0},{1}]:{2}".format(i,j,img[i,j]))
-            print('------')
+            # print("[{0},{1}]:{2}".format(i,j,img[i,j]))
+            # print('------')
             if img[i, j] == 0:
                 imgRes[i, j] = (255, 255, 255)  # 此处替换颜色为bgr通道
 
     cv2.imshow('img',imgRes)
     cv2.waitKey(0)
-
-    # print(len(shape[0][0]))
-    # print(len(shape[1][0]))
-    # # for i in range(64):
-    # #     for j in range(513):
-    # #         print(probabilities[i*63+j])
-    # # cv2.imshow('kk',probabilities)
-    # print(probabilities[0])
-    # print(probabilities[1])
-
-    # len0=len(shape[0][0])
-    # for i in range(len0):
-    #     print(shape[0][0][i])
-    # len1=len(shape[1][0])
-    # for j in range(len1):
-    #     print(shape[1][0][j])
 
 if __name__ == '__main__':
     argv = sys.argv
