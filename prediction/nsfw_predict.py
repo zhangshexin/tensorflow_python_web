@@ -14,7 +14,9 @@ _IMAGE_SIZE = 64
 _BATCH_SIZE = 128
 
 _LABEL_MAP = {0:'drawings', 1:'hentai', 2:'neutral', 3:'porn', 4:'sexy'}
-
+'''
+图片鉴黄
+'''
 def standardize(img):
     mean = np.mean(img)
     std = np.std(img)
