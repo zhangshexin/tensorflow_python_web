@@ -4,6 +4,11 @@ import cv2 as cv
 from keras.preprocessing.image import load_img, img_to_array
 from matplotlib import pyplot as plt
 import os
+
+'''
+调用tensorflow语义分割，将人物提取出来
+'''
+
 img_path=os.getcwd()+'/imgs/mini_zjz.png'
 model_path=os.getcwd()+'/models/maskmode/frozen_inference_graph.pb'
 img = load_img(img_path)  # 输入预测图片的url
