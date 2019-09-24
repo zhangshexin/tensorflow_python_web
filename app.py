@@ -60,6 +60,26 @@ def txtFilter():
         txted=gfw.filter(txt, "*")
         return 'txt={}'.format(txted)
 
+#orc识别 https://github.com/breezedeus/cnocr/blob/master/README_cn.md
+@app.route('/ocr/txt/', methods=['GET', 'POST'])
+def txtOcr():
+    if request.method == 'POST':
+        file = request.files['file']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(''.join(lazy_pinyin(file.filename)))
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            file_url = url_for('uploaded_file', filename=filename)
+            import mxnet as mx
+            from cnocr import CnOcr
+            ocr = CnOcr()
+            img_fp = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            img = mx.image.imread(img_fp, 1)
+            res = ocr.ocr(img)
+            print("Predicted Chars:", res)
+            return html + '<br><img src=' + file_url + '><p>预测结果如下：' +  str(res) + '</p>'
+    return html
+
+
 
 if __name__ == '__main__':
     app.run(debug=True,host='0.0.0.0')

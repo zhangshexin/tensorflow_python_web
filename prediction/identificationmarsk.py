@@ -2,14 +2,13 @@ import cv2
 import  numpy as np
 import os
 
-from util import hsv2rgb,rgb2hsv
 
 
 imgpath=os.getcwd()+'/imgs'
 
-img=cv2.imread(imgpath+'/zjz2.jpeg')
+img=cv2.imread(imgpath+'/zjz.jpeg')
 img2=np.copy(img)
-print(img)
+
 # '''
 #缩放
 rows,cols,channels=img.shape
@@ -19,19 +18,20 @@ rows,cols,channels=img.shape
 
 #转换hsv
 hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-lower_blue=np.array([78,43,46])
-upper_blue=np.array([110,255,255])
+# lower_blue=np.array([164, 141  ,65])
+# upper_blue=np.array([184 ,161 ,145])
+pixstart=hsv[0,0]
+pixend=hsv[0,cols-1]
+
+lower_blue=np.array([pixstart[0]-10,pixstart[1]-10,pixstart[2]-50])
+upper_blue=np.array([pixend[0]+80,pixend[1]+80,pixend[2]+100])
+print(lower_blue,upper_blue)
 mask=cv2.inRange(hsv,lower_blue,upper_blue)
 cv2.imshow('Mask',mask)
 
-rgb1=hsv2rgb(78,43,46)
-rgb2=hsv2rgb(110,255,255)
-print(rgb1)
-print(rgb2)
-
 
 #腐蚀-》膨胀，进行开运算，去除小区域黑洞
-kernel = np.ones((5, 5), np.uint8)
+kernel = np.ones((30, 30), np.uint8)
 erode=cv2.erode(mask,kernel)
 cv2.imshow('erode',erode)
 
@@ -43,11 +43,21 @@ cv2.imshow('dilate',dilate)
 #遍历替换
 for i in range(rows):
     for j in range(cols):
-        if dilate[i,j]==255:
-            img[i,j]=(48,37,100)#此处替换颜色为bgr通道
+        if mask[i,j]==255:
+            img[i,j]=(255,255,255)#此处替换颜色为bgr通道
 
 cv2.imshow('res',img)
+
+graimg=cv2.cvtColor(img2,cv2.COLOR_BGR2GRAY)
+cv2.imshow('gray',graimg)
+_, thresh = cv2.threshold(graimg, 61, 122, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+edges = cv2.Canny(thresh, 30, 70)
+cv2.imshow('edges',edges)
+
+
+
 #高斯作模糊处理，边缘过于锐化不好看
+'''
 gauimg=cv2.GaussianBlur(img, ksize=(15, 15), sigmaX=0, sigmaY=0)
 
 cv2.imshow('gau',gauimg)
@@ -59,6 +69,6 @@ beta = 1-alpha
 gamma = 0
 img_add = cv2.addWeighted(img, alpha, gauimg, beta, gamma)
 cv2.imshow('imgadd',img_add)
-
+'''
 cv2.waitKey(0)
 cv2.destroyAllWindows()

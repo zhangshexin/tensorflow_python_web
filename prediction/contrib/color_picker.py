@@ -3,7 +3,7 @@ import numpy as np
 
 image_hsv = None   # global ;(
 pixel = (20,60,80) # some stupid default
-#这是一个工具类，用于捕抓相系点转为hsv
+#这是一个工具类，用于捕抓相素点转为hsv
 # mouse callback function
 def pick_color(event,x,y,flags,param):
     if event == cv2.EVENT_LBUTTONDOWN:
