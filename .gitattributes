@@ -1,0 +1,2 @@
+*.pth filter=lfs diff=lfs merge=lfs -text
+models/deep_image_matting/stage_sad_54.4.pth filter=lfs diff=lfs merge=lfs -text

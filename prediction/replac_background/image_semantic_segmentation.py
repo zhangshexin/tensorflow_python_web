@@ -7,34 +7,37 @@ from skimage import  transform
 from PIL import Image
 from keras.preprocessing.image import load_img, img_to_array
 import cv2
+
+import argparse
+import deep_image_matting.net as net
+import torch
+from deep_image_matting.deploy import inference_img_whole
 '''
 加载pb模型实现语义分割,图片大小要在513内
 '''
 
 model_dir=os.getcwd()+'/models/maskmode'
 _IMAGE_SIZE = 64
-def standardize(img):
-    mean = np.mean(img)
-    std = np.std(img)
-    img = (img - mean) / std
-    return img
 
-def load_image( infilename ) :
-    img = Image.open( infilename )
-    img = img.resize((_IMAGE_SIZE, _IMAGE_SIZE))
-    img.load()
-    data = np.asarray( img, dtype=np.float32 )
-    data = standardize(data)
-    return data
-
+'''
+生成trimap图
+'''
 def generate_trimap(alpha):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     fg = np.array(np.equal(alpha, 255).astype(np.float32))
-    fg = cv2.erode(fg, kernel, iterations=np.random.randint(3, 6))
+
+    fg = cv2.erode(fg, kernel, iterations=10)#腐蚀为了让未知区域可以大一点
+    cv2.imshow('after', fg)
     unknown = np.array(np.not_equal(alpha, 0).astype(np.float32))
-    unknown = cv2.dilate(unknown, kernel, iterations=np.random.randint(10, 20))
+    unknown = cv2.dilate(unknown, kernel, iterations=10)
     trimap = fg * 255 + (unknown - fg) * 128
     return trimap.astype(np.uint8)
+
+def custom_blur(image):
+  kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], np.float32) #锐化
+  dst = cv2.filter2D(image, -1, kernel=kernel)
+  cv2.imshow("custom_blur_demo", dst)
+  return dst
 
 def create_graph():
   """Creates a graph from saved GraphDef file and returns a saver."""
@@ -45,6 +48,9 @@ def create_graph():
     graph_def.ParseFromString(f.read())
     _ = tf.import_graph_def(graph_def, name='')
 
+'''
+将前景扣出并与新背景合并生成新图
+'''
 def composite4(fg, bg, a, w, h):
     fg = np.array(fg, np.float32)
     bg_h, bg_w = bg.shape[:2]
@@ -60,7 +66,6 @@ def composite4(fg, bg, a, w, h):
     im = alpha * fg + (1 - alpha) * bg
     im = im.astype(np.uint8)
     cv2.imshow('im',im)
-    cv2.imshow('bg',bg )
     return im, bg
 
 def run_inference_on_image(image):
@@ -71,9 +76,9 @@ def run_inference_on_image(image):
     Nothing
   """
   imgRes = cv2.imread(image_path)
-  rows, cols,_ = imgRes.shape
   print(imgRes.shape)
-
+  imgRes=resizeImg(imgRes)
+  rows, cols = imgRes.shape[:2]
 
   if not tf.gfile.Exists(image):
     tf.logging.fatal('File does not exist %s', image)
@@ -92,16 +97,19 @@ def run_inference_on_image(image):
     # Runs the softmax tensor by feeding the image_data as input to the graph.
     inputs = sess.graph.get_tensor_by_name("ImageTensor:0")
     probabilities_op = sess.graph.get_tensor_by_name('SemanticPredictions:0')
-    class_index_op = sess.graph.get_tensor_by_name('ArgMax:0')
+    # class_index_op = sess.graph.get_tensor_by_name('ArgMax:0')
 
     # image_data = load_image(image_path)
-    img = load_img(image_path)  # 输入预测图片的url
-    img = img_to_array(img)
-    image_data = np.expand_dims(img, axis=0).astype(np.uint8)  # uint8是之前导出模型时定义的
-    print(image_data.shape)
+    # img = load_img(image_path)  # 输入预测图片的url
+    # img = img_to_array(img)
+    # image_data = np.expand_dims(img, axis=0).astype(np.uint8)  # uint8是之前导出模型时定义的
+    # print(image_data.shape)
+
+    image_newdata=cv2.cvtColor(imgRes,cv2.COLOR_BGR2RGB)#必须转为rbg，因为模型训练时用的是rgb的图，否则会特征不匹配
+    image_newdata = np.expand_dims(image_newdata, axis=0).astype(np.uint8)
     # print(image_data)
     result = sess.run(probabilities_op,
-                                          feed_dict={inputs: image_data})
+                                          feed_dict={inputs: image_newdata})
     n=result.transpose(1,2,0)#result是一个（1，xx,xx）的shape，因为我们要用的是一个通道在后（xx，xx，1）这样的shape
     print(n.shape)
     print(result[0].shape)
@@ -114,16 +122,12 @@ def run_inference_on_image(image):
         for j in range(cols):
             if img[i, j] != 0:
                 copymask[i, j] = 255
-    cv2.imshow('copymask',copymask)
+    # cv2.imshow('copymask',copymask)
     print('copymask')
     print(np.asarray(copymask))
-
-    remask=np.reshape(copymask, [500, 374])
+    row,col,_=copymask.shape
+    remask=np.reshape(copymask, [row, col])#后面要用的是一个这样的
     print(remask.shape)
-
-    gimg = cv2.imread(image_path,cv2.IMREAD_GRAYSCALE)
-    print('gimg')
-    print(gimg)
 
     alpha = np.zeros((rows, cols), np.float32)
     alpha[0:rows, 0:cols] = remask
@@ -132,83 +136,88 @@ def run_inference_on_image(image):
     print('trimap')
     print(trimap.shape)
     result=trimap[:, :, np.newaxis]
-    cv2.imwrite('trimap.png',result)
-
-
-
-    #重新载入原图，得到hsv图后面要根据mask得出背景图的范围
-    resImg=cv2.imread(image_path)
-    hsv = cv2.cvtColor(resImg, cv2.COLOR_BGR2HSV)
-    cv2.imshow('hsv', hsv)
-    lowerArr=hsv[0,0]
-    upperArr=hsv[0,cols-1]
-    # 遍历替换
-    for i in range(rows):
-        for j in range(cols):
-            # print("[{0},{1}]:{2}".format(i,j,img[i,j]))
-            # print('------')
-            if img[i, j] == 0:
-                #将mask区中的最小值和最大值找出重新进行mask找到背景以便自动滤除
-                pix=hsv[i,j]
-                # print(pix)
-
-                lowerArr[0]=lowerArr[0] if lowerArr[0]<pix[0] else pix[0]
-                lowerArr[1] = lowerArr[1] if lowerArr[1] < pix[1] else pix[1]
-                lowerArr[2] = lowerArr[2] if lowerArr[2] < pix[2] else pix[2]
-
-                upperArr[0] = upperArr[0] if upperArr[0] > pix[0] else pix[0]
-                upperArr[1] = upperArr[1] if upperArr[1] > pix[1] else pix[1]
-                upperArr[2] = upperArr[2] if upperArr[2] > pix[2] else pix[2]
-
-
-                # 替换背景颜色为bgr通道白色
-                imgRes[i, j] = (255, 255, 255)
-    print(lowerArr)
-    print(upperArr)
-    print(np.array([lowerArr[0]+20,lowerArr[1]+20,lowerArr[2]+20]))
-    print(np.array([upperArr[0],upperArr[1],upperArr[2]]))
-    cv2.imshow('img',imgRes)
-    #开始重新处理边缘
-    mask2 = cv2.inRange(hsv, np.array([lowerArr[0]+20,lowerArr[1]+20,lowerArr[2]+20]), np.array([upperArr[0]+0,upperArr[1]+0,upperArr[2]+0]))
-    cv2.imshow('mask2',mask2)
-
-
-
-
-    # kernel2 = np.ones((30, 30), np.uint8)
-    # dilate = cv2.dilate(mask2, kernel2)
-    # cv2.imshow('dilate', dilate)
-    # erode=cv2.erode(dilate,kernel2)
-    # cv2.imshow('erode',erode)
-
-
-    kernel = np.ones((3, 3), np.uint8)
-    opening = cv2.morphologyEx(mask2, cv2.MORPH_OPEN, kernel)
-    cv2.imshow('opening', opening)
-    # 取轮廓，大于61的值应变为122，小于61的应变为0，THRESH_BINARY_INV则相反
-    _, thresh = cv2.threshold(opening, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    edges = cv2.Canny(thresh, 200, 220)
-    cv2.imshow('edges', edges)
-
-    contours, hierarchy = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(img, contours, -1, (255, 255, 255), 3)
-    cv2.putText(img, "{:.3f}".format(len(contours)), (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1)
-    # cv2.imshow("img", img)
-    cv2.imshow("contours", img)
-
-
-    # 遍历替换
-    for i in range(rows):
-        for j in range(cols):
-            if opening[i, j] == 255:
-                imgRes[i, j] = (255, 255, 255)  # 此处替换颜色为bgr通道
-    cv2.imshow('img2', imgRes)
+    cv2.imwrite(os.getcwd()+'/trimaps/trimap.png',result)
+    #开始通过deep-image-matting处理
+    predictImg(imgRes,cv2.imread(os.getcwd()+'/trimaps/trimap.png')[:, :, 0],row,col)
     cv2.waitKey(0)
 
+INPUT_SIZE=513
+'''
+由于模型最大支持的图片尺寸为513,所以要进行缩放处理
+'''
+def resizeImg(inputImg):
+    row,col=inputImg.shape[:2]
+    #如果比规定的值大那必须要进行处理
+    if row>INPUT_SIZE or col>INPUT_SIZE:
+        fx=(float)(INPUT_SIZE/row)
+        fy=(float)(INPUT_SIZE/col)
+        resized=cv2.resize(inputImg,None,fx=min(fx,fy),fy=min(fx,fy),interpolation=cv2.INTER_LANCZOS4)
+        print('resized')
+        print(resized.shape)
+        return resized
+    else:
+        return inputImg
+
+
+def predictImg(image,trimap,row,col):
+    result_dir = os.getcwd()+"/pred"
+
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    # parameters setting
+    parser = argparse.ArgumentParser()
+    args = parser.parse_args()
+    args.cuda = False
+    args.resume = "models/deep_image_matting/stage_sad.pth"
+    args.stage = 1
+    args.crop_or_resize = "whole"
+    args.max_size = 1600
+
+    # init model
+    model = net.VGG16(args)
+    ckpt = torch.load(args.resume, map_location='cpu')
+    model.load_state_dict(ckpt['state_dict'], strict=True)
+    # model = model.cuda()
+
+    # infer one by one
+    torch.cuda.empty_cache()
+    with torch.no_grad():
+        pred_mattes = inference_img_whole(args, model, image, trimap)
+
+    pred_mattes = (pred_mattes * 255).astype(np.uint8)
+    pred_mattes[trimap == 255] = 255
+    pred_mattes[trimap == 0] = 0
+    # target = image * pred_mattes[:,:,np.newaxis]
+    # cv2.imshow('target', cv2.cvtColor(target,cv2.COLOR_BGR2RGB))
+    # cv2.waitKey(0)
+    # bg = cv2.imread(os.getcwd() + '/composebg/input_image.jpg')
+    bg = create_bgimage(row,col)
+    # print('00000000')
+    # cv2.imshow('img33',image)
+    im, bg = composite4(image, bg, pred_mattes, col, row)
+    cv2.imwrite(os.getcwd()+"/pred/test.png", pred_mattes)
+    cv2.waitKey(0)
+'''
+创建纯色图
+https://blog.csdn.net/qq_42444944/article/details/90745397
+'''
+def create_bgimage(row,col):
+    img = np.zeros([row, col, 3], np.uint8)
+    img[:, :, 0] = np.zeros([row, col]) + 205
+    img[:, :, 1] = np.ones([row, col]) + 105
+    img[:, :, 2] = np.ones([row, col]) * 63
+    # cv2.imshow("iamge", img)
+    # img2 = np.zeros([row, col, 3], np.uint8)+233
+    # cv2.imshow("iamge2", img2)
+    # cv2.waitKey(0)
+    return img
+
 if __name__ == '__main__':
-    argv = sys.argv
-    if(len(argv) < 2):
-        print("usage: python nsfw_predict <image_path>")
-    image_path = argv[1]
+    # argv = sys.argv
+    # if(len(argv) < 2):
+    #     print("usage: python nsfw_predict <image_path>")
+    # image_path = argv[1]
+    image_path='imgs/zjz.jpeg'
     print(image_path)
     run_inference_on_image(image_path)

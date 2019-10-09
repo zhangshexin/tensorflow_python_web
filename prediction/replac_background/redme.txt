@@ -1,0 +1,4 @@
+identificationmarsk.py 证件照替换背景，前提需要知道背景的hsv值，如果不知道或背景执行过渐变你可能无法准备的替换
+
+
+image_semantic_segmentation.py 先通过语义分割拿到mark，再将mark图转物trimap图，通过deep-image-matting来精确去掉多余的背景部分【对语义分割的结果好坏有很强的依赖性】
