@@ -6,10 +6,13 @@ from pypinyin import lazy_pinyin
 import prediction.nsfw_predict as nsfw
 import prediction.filter as filter
 
+import prediction.replac_background.image_semantic_segmentation as iss
+
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.getcwd()+"/imgs"
+app.config['PREDS_FOLDER']=os.getcwd()+'/pred'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 
@@ -34,6 +37,10 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'],
                                filename)
 
+@app.route('/preds/<filename>')
+def preds_file(filename):
+    return send_from_directory(app.config['PREDS_FOLDER'],
+                               filename)
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
@@ -79,7 +86,20 @@ def txtOcr():
             return html + '<br><img src=' + file_url + '><p>预测结果如下：' +  str(res) + '</p>'
     return html
 
-
+@app.route('/predict/replacebg/', methods=['GET', 'POST'])
+def replaceBg():
+    if request.method == 'POST':
+        file = request.files['file']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(''.join(lazy_pinyin(file.filename)))
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            file_url = url_for('uploaded_file', filename=filename)
+            resultPic = iss.run_inference_on_image(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            print('resultpci path:'+resultPic)
+            result_url = url_for('preds_file', filename=os.path.split(resultPic)[1])
+            print('====='+result_url)
+            return html + '<br><img src=' + file_url + '><p>处理结果如下：<img src=' + result_url + '>' +'</p>'
+    return html
 
 if __name__ == '__main__':
     app.run(debug=True,host='0.0.0.0')

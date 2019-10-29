@@ -1,7 +1,7 @@
 import torch
 import argparse
 import torch.nn as nn
-import deep_image_matting.net as net
+import net
 import cv2
 import os
 from torchvision import transforms

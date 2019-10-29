@@ -2,6 +2,7 @@ import os
 import tensorflow as tf
 import sys
 import  numpy as np
+import time
 from matplotlib import pyplot as plt
 from skimage import  transform
 from PIL import Image
@@ -9,16 +10,18 @@ from keras.preprocessing.image import load_img, img_to_array
 import cv2
 
 import argparse
-import deep_image_matting.net as net
+
+sys.path.append(os.getcwd()+'/prediction/replac_background/deep_image_matting')
+
+import net
 import torch
-from deep_image_matting.deploy import inference_img_whole
+from deploy import inference_img_whole
 '''
 加载pb模型实现语义分割,图片大小要在513内
 '''
-
+isDebug=False
 model_dir=os.getcwd()+'/models/maskmode'
 _IMAGE_SIZE = 64
-
 '''
 生成trimap图
 '''
@@ -27,7 +30,8 @@ def generate_trimap(alpha):
     fg = np.array(np.equal(alpha, 255).astype(np.float32))
 
     fg = cv2.erode(fg, kernel, iterations=10)#腐蚀为了让未知区域可以大一点
-    cv2.imshow('after', fg)
+    if isDebug:
+        cv2.imshow('after', fg)
     unknown = np.array(np.not_equal(alpha, 0).astype(np.float32))
     unknown = cv2.dilate(unknown, kernel, iterations=10)
     trimap = fg * 255 + (unknown - fg) * 128
@@ -36,7 +40,8 @@ def generate_trimap(alpha):
 def custom_blur(image):
   kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], np.float32) #锐化
   dst = cv2.filter2D(image, -1, kernel=kernel)
-  cv2.imshow("custom_blur_demo", dst)
+  if isDebug:
+    cv2.imshow("custom_blur_demo", dst)
   return dst
 
 def create_graph():
@@ -65,17 +70,20 @@ def composite4(fg, bg, a, w, h):
     alpha[:, :, 0] = a / 255.
     im = alpha * fg + (1 - alpha) * bg
     im = im.astype(np.uint8)
-    cv2.imshow('im',im)
+    if isDebug:
+        cv2.imshow('im',im)
     return im, bg
 
-def run_inference_on_image(image):
+def run_inference_on_image(image,isDebug = False):
   """Runs inference on an image.
   Args:
     image: Image file name.
   Returns:
     Nothing
   """
-  imgRes = cv2.imread(image_path)
+  global image_path
+  image_path = image
+  imgRes = cv2.imread(image)
   print(imgRes.shape)
   imgRes=resizeImg(imgRes)
   rows, cols = imgRes.shape[:2]
@@ -114,7 +122,8 @@ def run_inference_on_image(image):
     print(n.shape)
     print(result[0].shape)
     img = np.array(n, dtype=np.uint8)#转换类型
-    cv2.imshow('mark', img)
+    if isDebug:
+        cv2.imshow('mark', img)
 
     #人的区域改为白色
     copymask = np.copy(img)
@@ -132,14 +141,18 @@ def run_inference_on_image(image):
     alpha = np.zeros((rows, cols), np.float32)
     alpha[0:rows, 0:cols] = remask
     trimap = generate_trimap(alpha)
-    cv2.imshow('trimap',trimap)
+    if isDebug:
+        cv2.imshow('trimap',trimap)
     print('trimap')
     print(trimap.shape)
     result=trimap[:, :, np.newaxis]
-    cv2.imwrite(os.getcwd()+'/trimaps/trimap.png',result)
+    timestamp=str(int(time.time()))
+    cv2.imwrite(os.getcwd()+'/trimaps/trimap'+timestamp+'.png',result)
     #开始通过deep-image-matting处理
-    predictImg(imgRes,cv2.imread(os.getcwd()+'/trimaps/trimap.png')[:, :, 0],row,col)
-    cv2.waitKey(0)
+    path=predictImg(imgRes,cv2.imread(os.getcwd()+'/trimaps/trimap'+timestamp+'.png')[:, :, 0],row,col)
+    if isDebug:
+        cv2.waitKey(0)
+    return path
 
 INPUT_SIZE=513
 '''
@@ -196,8 +209,15 @@ def predictImg(image,trimap,row,col):
     # print('00000000')
     # cv2.imshow('img33',image)
     im, bg = composite4(image, bg, pred_mattes, col, row)
-    cv2.imwrite(os.getcwd()+"/pred/test.png", pred_mattes)
-    cv2.waitKey(0)
+    timestamp = str(int(time.time()))
+    cv2.imwrite(os.getcwd()+'/pred/test'+timestamp+'.png', pred_mattes)
+    fileNameAndSuffix=os.path.split(image_path)[1].split('.')
+    newfileNameAndSuffix=os.getcwd()+'/pred/'+fileNameAndSuffix[0]+'_replace_bg'+timestamp+'.'+fileNameAndSuffix[1]
+    print('=============:'+newfileNameAndSuffix)
+    cv2.imwrite(newfileNameAndSuffix,im)
+    if isDebug:
+        cv2.waitKey(0)
+    return newfileNameAndSuffix
 '''
 创建纯色图
 https://blog.csdn.net/qq_42444944/article/details/90745397
@@ -218,6 +238,6 @@ if __name__ == '__main__':
     # if(len(argv) < 2):
     #     print("usage: python nsfw_predict <image_path>")
     # image_path = argv[1]
-    image_path='imgs/zjz.jpeg'
+    image_path='imgs/white_zjz.jpeg'
     print(image_path)
-    run_inference_on_image(image_path)
+    run_inference_on_image(image_path,True)
